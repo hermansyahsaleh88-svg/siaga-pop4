@@ -5,8 +5,11 @@
 // Tidak ada data checklist / submission yang di-cache di sini.
 
 const CACHE_NAME = 'siaga-p0p4-shell-v1';
+// Sengaja TIDAK menyebut nama file HTML secara spesifik (mis. index.html
+// atau SIAGA_P0-P4_Online.html) supaya service worker ini tetap berfungsi
+// apa pun nama file utama di hosting Anda. Halaman utama akan otomatis
+// ter-cache saat pertama kali dibuka lewat handler 'fetch' di bawah.
 const APP_SHELL = [
-  './SIAGA_P0-P4_Online.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
@@ -14,7 +17,9 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(APP_SHELL.map((url) => cache.add(url).catch(() => {})))
+    )
   );
   self.skipWaiting();
 });

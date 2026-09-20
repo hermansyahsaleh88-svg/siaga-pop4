@@ -12,11 +12,52 @@ nyaman di HP.
 
 ---
 
+## ⚠️ Update: khusus untuk siagap0p4.netlify.app (deploy via Git)
+
+Sudah saya cek langsung ke **https://siagap0p4.netlify.app/** — situs Anda
+memang belum punya `manifest.json`, `service-worker.js`, maupun folder
+`icons/` (semuanya masih 404), dan file HTML yang tayang di sana juga masih
+versi lama (belum ada tag PWA-nya). Karena Netlify Anda terhubung ke
+**repository Git (GitHub/GitLab) dengan auto-deploy**, cara memperbaikinya
+BUKAN dengan upload manual lewat dashboard Netlify, melainkan lewat repo:
+
+1. Buka folder project di komputer Anda yang merupakan **clone dari repo
+   Git** yang tersambung ke Netlify tersebut (folder yang biasa Anda pakai
+   untuk `git add` / `git commit` / `git push` ke situs ini).
+2. Cari file HTML utama di root folder itu — kemungkinan besar namanya
+   **`index.html`** (karena situs Anda tayang langsung di alamat root
+   `https://siagap0p4.netlify.app/` tanpa nama file, dan
+   `.../SIAGA_P0-P4_Online.html` juga 404 — tandanya Netlify menyajikan
+   `index.html`).
+3. **Buka file `index.html` itu**, lalu bandingkan dengan file
+   `SIAGA_P0-P4_Online.html` di folder `SIAGA_P0-P4_PWA/` yang saya kirim —
+   **salin seluruh isi** `SIAGA_P0-P4_Online.html` (file baru, sudah ada tag
+   PWA) untuk **menimpa isi `index.html`** di repo Anda. Nama file di repo
+   tetap `index.html`, hanya isinya yang diganti dengan isi file baru ini.
+4. Salin 3 item lain dari folder `SIAGA_P0-P4_PWA/` ke **root folder repo
+   yang sama** (sejajar dengan `index.html`):
+   - `manifest.json`
+   - `service-worker.js`
+   - folder `icons/` (seluruh isinya, folder ini sudah tidak bergantung
+     nama file HTML — sudah saya perbaiki agar aman dipakai dengan nama
+     file apa pun)
+5. `git add .` → `git commit -m "Tambah dukungan PWA"` → `git push`.
+6. Tunggu 1–2 menit sampai Netlify selesai auto-deploy (bisa dicek progresnya
+   di dashboard Netlify → tab **Deploys**).
+7. Setelah selesai, cek dulu dari browser (boleh dari HP atau komputer):
+   buka `https://siagap0p4.netlify.app/manifest.json` — kalau muncul teks
+   JSON (bukan halaman "Page not found"), berarti sudah berhasil ter-upload.
+
+Setelah langkah di atas berhasil, lanjutkan ke bagian **"4. Cara pasang ke
+layar utama HP Android"** di bawah.
+
+---
+
 ## 1. Isi folder ini
 
 ```
 SIAGA_P0-P4_PWA/
-├─ SIAGA_P0-P4_Online.html      ← file aplikasi utama (sudah berisi kredensial Supabase Anda)
+├─ SIAGA_P0-P4_Online.html      ← isi file ini yang perlu disalin ke index.html Anda
 ├─ manifest.json                ← "identitas" PWA (nama app, ikon, warna tema)
 ├─ service-worker.js            ← wajib ada agar Android mau menawarkan instalasi
 ├─ favicon.ico                  ← ikon kecil untuk tab browser
@@ -28,11 +69,10 @@ SIAGA_P0-P4_PWA/
 persis seperti ini. Jangan mengganti nama file `manifest.json` atau
 `service-worker.js`.
 
-> Jika sebelumnya Anda sudah punya `SIAGA_P0-P4_Online.html` versi lama di
-> hosting, **timpa (replace)** dengan file baru dari folder ini — file baru
-> ini sudah berisi tag PWA tambahan di bagian `<head>` dan skrip pendaftaran
-> service worker sebelum `</body>`, tapi seluruh logika aplikasi (login,
-> checklist, approval, dsb.) **tidak berubah sama sekali**.
+> Untuk hosting selain Netlify/Git (misalnya upload manual via cPanel File
+> Manager atau FTP): upload semua file di atas apa adanya (boleh pakai nama
+> `SIAGA_P0-P4_Online.html`), dan jika sebelumnya sudah ada file versi lama,
+> **timpa (replace)** dengan file baru dari folder ini.
 
 ---
 
