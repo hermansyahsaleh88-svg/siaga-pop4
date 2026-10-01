@@ -946,12 +946,34 @@ function submissionToRow(sub) {
 
 async function loadSubmissions() {
   if (!db) return [];
-  const { data, error } = await db.from('submissions').select('*').order('created_at', { ascending: false });
+  /* Memuat dari VIEW submissions_list (bukan tabel submissions langsung):
+     view ini mengirim data foto TANPA isi gambarnya (hanya id & nama),
+     supaya daftar checklist di dashboard/riwayat cepat dimuat & tidak lagi
+     memicu "Gagal memuat data dari server" akibat ukuran data foto yang
+     besar. Isi gambar foto diambil belakangan, hanya saat dibutuhkan
+     (lihat fetchFullPhotos/getPhoto). */
+  const { data, error } = await db.from('submissions_list').select('*').order('created_at', { ascending: false });
   if (error) { toast('Gagal memuat data dari server. Periksa koneksi internet Anda.', 'warn'); return []; }
   return (data || []).map(rowToSubmission);
 }
 async function saveSubmissionRow(sub) {
   if (!db) return { ok: false, message: 'Aplikasi belum terhubung ke server (Supabase URL/Key belum diisi).' };
+  /* Jaga-jaga penting: 'sub' bisa berasal dari daftar ringan (submissions_list)
+     yang isi foto ('dataUrl')-nya sengaja TIDAK dibawa. Jika disimpan apa
+     adanya, foto yang sudah ada di server bisa TERHAPUS/tertimpa kosong saat
+     Koordinator/TL menyetujui atau menolak checklist. Di sini kita pastikan
+     dulu foto aslinya (lengkap dengan dataUrl) diambil dari server sebelum
+     disimpan; jika gagal diambil, penyimpanan dibatalkan (bukan menyimpan
+     versi foto yang kosong). */
+  const needsFullPhotos = (sub.photos || []).some((p) => p && p.id && !p.dataUrl);
+  if (needsFullPhotos) {
+    const full = await fetchFullPhotos(sub.id);
+    const stillMissing = (sub.photos || []).some((p) => p && p.id && !(full.find((f) => f.id === p.id) || {}).dataUrl);
+    if (stillMissing) {
+      return { ok: false, message: 'Gagal memuat data foto asli sebelum menyimpan. Periksa koneksi internet Anda lalu coba lagi.' };
+    }
+    sub = Object.assign({}, sub, { photos: full });
+  }
   const { error } = await db.from('submissions').upsert(submissionToRow(sub));
   if (error) {
     console.error('Gagal simpan submission:', error);
@@ -961,18 +983,31 @@ async function saveSubmissionRow(sub) {
 }
 
 /* Foto disimpan LANGSUNG di dalam baris submission (kolom photos jsonb),
-   jadi tidak perlu penyimpanan file terpisah lagi. */
+   jadi tidak perlu penyimpanan file terpisah lagi.
+   Namun daftar checklist (loadSubmissions) TIDAK lagi membawa isi gambar
+   foto (lihat submissions_list view) -- isi gambar baru diambil dari
+   server belakangan, per submission, saat benar-benar dibutuhkan (buka
+   detail, perbesar foto/lightbox, atau export). _photosFullCache
+   menyimpan hasilnya supaya tidak diambil berulang-ulang. */
 async function savePhoto() { return true; }
-async function getPhoto(id) {
-  for (const s of state.submissions) {
-    const p = (s.photos || []).find((x) => x.id === id);
-    if (p) return p.dataUrl;
-  }
+let _photosFullCache = {}; // { [submissionId]: [{id,name,dataUrl}, ...] }
+async function fetchFullPhotos(subId) {
+  if (!subId) return [];
+  if (_photosFullCache[subId]) return _photosFullCache[subId];
+  if (!db) return [];
+  const { data, error } = await db.from('submissions').select('photos').eq('id', subId).single();
+  if (error || !data) return [];
+  _photosFullCache[subId] = data.photos || [];
+  return _photosFullCache[subId];
+}
+async function getPhoto(subId, id) {
   if (state.draft) {
     const p = (state.draft.photos || []).find((x) => x.id === id);
     if (p) return p.dataUrl;
   }
-  return null;
+  const photos = await fetchFullPhotos(subId);
+  const p = photos.find((x) => x.id === id);
+  return p ? p.dataUrl : null;
 }
 async function deletePhoto() { /* cukup hapus dari array photos draft, lihat draftRemovePhoto */ }
 
@@ -2071,20 +2106,20 @@ async function loadDetailPhotos(s) {
   for (let i = 0; i < s.photoIds.length; i++) {
     const id = s.photoIds[i];
     if (!_detailPhotoCache[id]) {
-      _detailPhotoCache[id] = await getPhoto(id);
+      _detailPhotoCache[id] = await getPhoto(s.id, id);
     }
     const img = document.getElementById('img_' + id);
     if (img && _detailPhotoCache[id]) img.src = _detailPhotoCache[id];
     const thumb = img ? img.closest('.photo-thumb') : null;
     if (thumb && !thumb._lightboxBound) {
       thumb._lightboxBound = true;
-      thumb.addEventListener('click', () => openLightbox(s.photoIds, s.photoNames, i));
+      thumb.addEventListener('click', () => openLightbox(s.id, s.photoIds, s.photoNames, i));
     }
   }
 }
 
 /* ===================== LIGHTBOX (perbesar foto dokumentasi) ===================== */
-let _lightboxState = { ids: [], names: [], index: 0 };
+let _lightboxState = { subId: null, ids: [], names: [], index: 0 };
 
 function ensureLightboxEl() {
   let el = document.getElementById('photoLightbox');
@@ -2117,9 +2152,9 @@ function ensureLightboxEl() {
   return el;
 }
 
-async function openLightbox(ids, names, index) {
+async function openLightbox(subId, ids, names, index) {
   if (!ids || !ids.length) return;
-  _lightboxState = { ids, names: names || [], index };
+  _lightboxState = { subId, ids, names: names || [], index };
   const el = ensureLightboxEl();
   el.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -2145,7 +2180,7 @@ async function showLightboxIndex(idx) {
   const name = _lightboxState.names[idx] || '';
   const n = _lightboxState.ids.length;
   if (!_detailPhotoCache[id]) {
-    _detailPhotoCache[id] = await getPhoto(id);
+    _detailPhotoCache[id] = await getPhoto(_lightboxState.subId, id);
   }
   const img = document.getElementById('lightboxImg');
   const cap = document.getElementById('lightboxCaption');
@@ -2715,7 +2750,7 @@ async function exportSubmission(sub) {
   const photos = [];
   for (let i = 0; i < sub.photoIds.length; i++) {
     const id = sub.photoIds[i];
-    const dataUrl = await getPhoto(id);
+    const dataUrl = await getPhoto(sub.id, id);
     if (dataUrl) photos.push({ id, name: sub.photoNames[i] || '', dataUrl });
   }
   const payload = {
